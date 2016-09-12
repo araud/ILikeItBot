@@ -4,16 +4,29 @@ import sys
 import time
 import argparse
 
+reload(sys)
+sys.setdefaultencoding('utf8')
+
 
 class ILikeItBot:
     def __init__(self, app_id, user, password):
-        session = vk.AuthSession(app_id=app_id, user_login=user, user_password=password, scope='wall,offline')
+        class AuthSession(vk.AuthSession):
+            def __init__(self):
+                vk.AuthSession.__init__(self, app_id=app_id, user_login=user, user_password=password, scope='wall,offline')
+
+            def get_captcha_key(self, captcha_image_url):
+                print('Open CAPTCHA image url: ', captcha_image_url)
+                captcha_key = raw_input('Enter CAPTCHA key: ')
+                return captcha_key
+        # session = vk.AuthSession(app_id=app_id, user_login=user, user_password=password, scope='wall,offline')
+        session = AuthSession()
         self.api = vk.API(session, v='5.53', lang='ru', timeout=10)  # 5.35
 
     def online_users_from_group(self, group_id):
         offset = 0
         while True:
-            users = self.api.users.search(count=1000, online=1, age_from=20, fields='id', group_id=group_id)
+            fields = 'id,blacklisted,is_friend,can_send_friend_request,followers_count'
+            users = self.api.users.search(count=1000, online=1, age_from=20, fields=fields, group_id=group_id)
             offset += len(users['items'])
             for user in users['items']:
                 yield user
@@ -24,11 +37,19 @@ class ILikeItBot:
         return self.api.photos.get(owner_id=user_id, album_id='profile')
 
     def like_post(self, owner_id, post_id):
-        # return self.api.likes.add(type='post', owner_id=owner_id, item_id=post_id, access_key=self.access_token)
         return self.api.likes.add(type='post', owner_id=owner_id, item_id=post_id)
+
+    def repost(self, item, where):
+        return self.api.wall.repost(object='wall%d_%d' % (item['owner_id'], item['id']), group_id=where)
 
     def get_own_posts(self, owner_id):
         return self.api.wall.get(owner_id=owner_id, filter='owner', count='100')
+
+    def get_user_counters(self, id):
+        return self.api.users.get(user_ids=id, fields='counters')[0]['counters']
+
+    def invite_to_group(self, id, group):
+        pass
 
 
 def read_list(path):
@@ -51,6 +72,8 @@ def main():
     parser.add_argument("-b", "--blacklist", required=True, help='path to handled ids list')
     parser.add_argument("-w", "--whitelist", required=True, help='path to white list of ids')
     parser.add_argument("-g", "--group", required=True, help='path to white list of ids')
+    parser.add_argument("-i", "--invite", required=True, help='group id where to invite')
+    parser.add_argument("-r", "--repost", required=True, help='group id where to repost')
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -62,9 +85,18 @@ def main():
         for user in bot.online_users_from_group(args.group):
             if (user['id'] not in white_list) or (user['id'] in black_list):
                 continue
-            nbl.write('%d\n' % user['id'])
             print "vk.com/id%d" % user['id']
             posts = bot.get_own_posts(user['id'])
+            nbl.write('%d\n' % user['id'])
+
+            for item in posts['items']:
+                if not item['likes']['can_publish']:
+                    continue
+                text = item['text'].decode('utf-8').lower()
+                if 'engl' in text or 'англ' in text:
+                    print bot.repost(item, args.repost)
+                    time.sleep(5)
+                    break
             recent_posts = sorted(
                 [item for item in posts['items'] if item['likes']['can_like']],
                 key=lambda item: item['date'],
@@ -89,6 +121,11 @@ def main():
                 time.sleep(5)
             else:
                 print "No avatars to like"
+            """
+            counters = bot.get_user_counters(user['id'])
+            if 300 < counters['friends'] < 700:
+                bot.invite_to_group(user['id'], args.invite)
+            """
 
 if __name__ == '__main__':
     main()
