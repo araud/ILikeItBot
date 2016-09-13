@@ -25,7 +25,7 @@ class ILikeItBot:
     def online_users_from_group(self, group_id):
         fields = 'id,blacklisted,is_friend,can_send_friend_request,followers_count'
         age_step = 1
-        for age in range(20, 60, age_step):
+        for age in range(30, 40, age_step):
             for sex in [1, 2]:
                 users = self.api.users.search(
                     count=1000, online=1, age_from=age, age_to=age+age_step, fields=fields, group_id=group_id, sex=sex
@@ -45,8 +45,8 @@ class ILikeItBot:
     def get_own_posts(self, owner_id):
         return self.api.wall.get(owner_id=owner_id, filter='owner', count='100')
 
-    def get_user_counters(self, id):
-        return self.api.users.get(user_ids=id, fields='counters')[0]['counters']
+    def get_user_info(self, id):
+        return self.api.users.get(user_ids=id, fields='counters,online')[0]
 
     def invite_to_group(self, id, group):
         pass
@@ -87,6 +87,12 @@ def main():
         for user in bot.online_users_from_group(args.group):
             if (user['id'] not in white_list) or (user['id'] in black_list):
                 continue
+
+            info = bot.get_user_info(user['id'])
+
+            if not info['online'] or info['counters']['friends'] > 700:
+                continue
+
             count += 1
             print "vk.com/id%d:\t%d" % (user['id'], count)
             posts = bot.get_own_posts(user['id'])
@@ -126,11 +132,7 @@ def main():
                 time.sleep(sleep_seconds)
             else:
                 print "No avatars to like"
-            """
-            counters = bot.get_user_counters(user['id'])
-            if 300 < counters['friends'] < 700:
-                bot.invite_to_group(user['id'], args.invite)
-            """
+
             if likes_limit <= 0:
                 print "Likes limit reached..."
                 break
