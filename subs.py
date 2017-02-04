@@ -61,26 +61,6 @@ def dictionary_parser(path):
     return dictionary
 
 
-def dictionary_parser(path):
-    dictionary = {}
-    with codecs.open(path, 'r', 'utf-8') as file:
-        for line in file:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            parts = line.split('\t')
-            if not parts:
-                continue
-            words, translation, type = parts
-            variants = words.split(';')
-            print str([words, translation, type]).encode('utf-8')
-            for variant in variants:
-                translations = dictionary.setdefault(variant.strip().capitalize(), {}).setdefault(type, [])
-                for variant in translation.split(';'):
-                    translations.append(variant.strip().capitalize())
-    return dictionary
-
-
 def lingvo_parser(path):
     import xml.etree.ElementTree as ET
     import pickle
@@ -94,25 +74,37 @@ def lingvo_parser(path):
                 for res in deep_search(el, name):
                     yield res
 
+    def get_text(el):
+        return ' '.join([child.tail for child in el if child.tail] + ([el.text] if el.text else []))
+
     def handle_block(block):
         if not block:
             return
         root = ET.fromstring(('<r>%s</r>' % block).encode('utf-8'))
         translation = None
+        krefs = []
         for el in root:
             if 'k' == el.tag:
-                name = el.text.lower()
-                translation = dictionary.setdefault(el.text.lower(), [])
+                name = get_text(el).strip().lower()
+                translation = dictionary.setdefault(name, [])
             elif 'dtrn' == el.tag:
-                text = ' '.join([child.tail for child in el if child.tail] + ([el.text] if el.text else []))
-                translation.append(text)
+                translation.append(get_text(el).strip())
             elif 'ex' == el.tag:
                 translation.append(el.text)
             elif 'kref' == el.tag:
-                translation.append(dictionary.setdefault(el.text.lower(), []))
+                krefs.append(el)
             else:
                 for kref in deep_search(el, 'kref'):
-                    translation.append(dictionary.setdefault(kref.text.lower(), []))
+                    krefs.append(kref)
+                for dtrn in deep_search(el, 'dtrn'):
+                    translation.append(get_text(dtrn).strip())
+
+        if not translation:
+            if krefs:
+                for kref in krefs:
+                    ref = get_text(kref).strip().lower()
+                    if ref != name:
+                        translation.append('^:' + ref)
         if not translation:
             print 'no translation:', name.encode('utf-8')
 
@@ -132,18 +124,21 @@ def lingvo_parser(path):
                 else:
                     block.append(line)
         with open(path+'.pcl', 'wb') as file:
-            pickle.dump(dictionary, file)
+            pickle.dump(dictionary, file, protocol=pickle.HIGHEST_PROTOCOL)
+
     return dictionary
 
 def main():
     #en_ru = dictionary_parser(os.path.join(os.path.dirname(__file__), 'english-russian.txt'))
     #read(english_replacements, english_suffixes, sub_parser, en_ru)
 
-    sp_ru = lingvo_parser(os.path.join(os.path.dirname(__file__), r'c:\Users\araud\Downloads\Spanish\UniversalEsRu.dict'))
-    #sp_en = dictionary_parser(os.path.join(os.path.dirname(__file__), 'spanish-english.txt'))
-    #sp_ru = dictionary_parser(os.path.join(os.path.dirname(__file__), 'spanish-russian.txt'))
-    read(r'c:\temp\SpanishBible\b_spanish_mod_utf-8.txt', spanish_replacements, spanish_suffixes, bible_parser, sp_ru)
+    en_ru = lingvo_parser(r'c:\Users\araud\Downloads\Dictionaries\LingvoUniversalEnRu.dict')
+    read(r'c:\Users\araud\Downloads\Ray.2004.BDRip.1080p.DTS.AC3.x264-CRiSC.srt', english_replacements, english_suffixes, sub_parser, en_ru)
 
+    """
+    sp_ru = lingvo_parser(r'c:\Users\araud\Downloads\Spanish\UniversalEsRu.dict')
+    read(r'c:\temp\SpanishBible\b_spanish_mod_utf-8.txt', spanish_replacements, spanish_suffixes, bible_parser, sp_ru)
+    """
 
 def read(path, replacements, suffixes, parser, dictionary):
     global all_words
@@ -192,11 +187,12 @@ def read(path, replacements, suffixes, parser, dictionary):
         if count > 1 and word.strip():
             def normalize(lst):
                 for el in lst:
-                    if isinstance(el, basestring):
-                        res = el.strip()
-                        if res:
-                            yield el.strip()
-            translation = '\t'.join(normalize(dictionary.get(word, [])))
+                    res = el.strip()
+                    if res:
+                        if res.startswith('^:'):
+                            res = '\t|\t'.join(normalize(dictionary.get(res[2:], []))).strip()
+                        yield res
+            translation = '\t|\t'.join(normalize(dictionary.get(word, [])))
             if not translation:
                 continue
             print ('%s\t%s' % (word.capitalize(), translation)).encode('utf-8')
