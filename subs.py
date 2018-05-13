@@ -132,8 +132,8 @@ def main():
     #en_ru = dictionary_parser(os.path.join(os.path.dirname(__file__), 'english-russian.txt'))
     #read(english_replacements, english_suffixes, sub_parser, en_ru)
 
-    en_ru = lingvo_parser(r'c:\Users\araud\Downloads\Dictionaries\LingvoUniversalEnRu.dict')
-    read(r'c:\Users\araud\Downloads\Ray.2004.BDRip.1080p.DTS.AC3.x264-CRiSC.srt', english_replacements, english_suffixes, sub_parser, en_ru)
+    en_ru = lingvo_parser(r'c:\Users\araud\Downloads\LingvoUniversalEnRu.dict')
+    read(r'c:\Users\araud\Downloads\The Family Man (2000).srt', english_replacements, english_suffixes, sub_parser, en_ru)
 
     """
     sp_ru = lingvo_parser(r'c:\Users\araud\Downloads\Spanish\UniversalEsRu.dict')
@@ -187,6 +187,8 @@ def read(path, replacements, suffixes, parser, dictionary):
         if count > 1 and word.strip():
             def normalize(lst):
                 for el in lst:
+                    if not el:
+                        continue
                     res = el.strip()
                     if res:
                         if res.startswith('^:'):
